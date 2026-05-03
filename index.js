@@ -14,6 +14,11 @@ const PORT = process.env.PORT || 3000;
 
 if (!MQTT_HOST || !MQTT_USER || !MQTT_PASS || !GOOGLE_SCRIPT_URL || !TOKEN_SECRETO) {
   console.log("❌ Faltan variables de entorno");
+  console.log("MQTT_HOST:", MQTT_HOST);
+  console.log("MQTT_USER:", MQTT_USER ? "OK" : "VACIO");
+  console.log("MQTT_PASS:", MQTT_PASS ? "OK" : "VACIO");
+  console.log("GOOGLE_SCRIPT_URL:", GOOGLE_SCRIPT_URL);
+  console.log("TOKEN_SECRETO:", TOKEN_SECRETO ? "OK" : "VACIO");
   process.exit(1);
 }
 
@@ -39,21 +44,30 @@ app.listen(PORT, () => {
 // --------------------
 const mqttUrl = `mqtts://${MQTT_HOST}:${MQTT_PORT}`;
 console.log("🔌 Conectando a MQTT:", mqttUrl);
+console.log("📌 MQTT_TOPIC configurado:", MQTT_TOPIC);
 
 const client = mqtt.connect(mqttUrl, {
   username: MQTT_USER,
   password: MQTT_PASS,
   reconnectPeriod: 5000,
-  keepalive: 60
+  keepalive: 60,
+  // Si hubiese problemas raros de certificado, descomentá esto:
+  // rejectUnauthorized: false
 });
 
 client.on("connect", () => {
   console.log("✅ Conectado a HiveMQ");
+
+  // Si querés escuchar solo tu topic, cambiá "#" por MQTT_TOPIC
   client.subscribe("#", (err) => {
     if (err) console.log("❌ Error al suscribirse:", err);
     else console.log("📡 Suscripto a TODOS los topics (#)");
   });
 });
+
+client.on("reconnect", () => console.log("🔄 Reintentando conexión MQTT..."));
+client.on("close", () => console.log("⚠️ MQTT desconectado"));
+client.on("offline", () => console.log("⚠️ MQTT offline"));
 
 function separarFechaHora(horaCompleta) {
   // Ej: "02/05/2026 21:11"
@@ -70,11 +84,9 @@ function separarFechaHora(horaCompleta) {
 
 client.on("message", async (topic, message) => {
   try {
+    const msgStr = message.toString();
 
     console.log("📌 Topic recibido:", topic);
-    console.log("📩 Mensaje recibido:", message.toString());
-        
-    const msgStr = message.toString();
     console.log("📩 MQTT recibido:", msgStr);
 
     let data = JSON.parse(msgStr);
@@ -94,14 +106,23 @@ client.on("message", async (topic, message) => {
       raw: data
     };
 
+    console.log("🌐 Enviando a Google Script URL:", GOOGLE_SCRIPT_URL);
+
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      redirect: "follow"
     });
 
     const text = await res.text();
-    console.log("🟢 Sheets:", text);
+
+    console.log("🟢 Sheets HTTP:", res.status);
+    console.log("🟢 Sheets RESP:", text.substring(0, 300));
+
+    if (res.status !== 200) {
+      console.log("❌ ERROR: Google Script devolvió status != 200");
+    }
 
   } catch (err) {
     console.log("❌ Error procesando mensaje:", err);
