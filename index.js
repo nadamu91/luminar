@@ -49,9 +49,9 @@ const client = mqtt.connect(mqttUrl, {
 
 client.on("connect", () => {
   console.log("✅ Conectado a HiveMQ");
-  client.subscribe(MQTT_TOPIC, (err) => {
+  client.subscribe("#", (err) => {
     if (err) console.log("❌ Error al suscribirse:", err);
-    else console.log("📡 Suscripto al topic:", MQTT_TOPIC);
+    else console.log("📡 Suscripto a TODOS los topics (#)");
   });
 });
 
@@ -70,6 +70,10 @@ function separarFechaHora(horaCompleta) {
 
 client.on("message", async (topic, message) => {
   try {
+
+    console.log("📌 Topic recibido:", topic);
+    console.log("📩 Mensaje recibido:", message.toString());
+        
     const msgStr = message.toString();
     console.log("📩 MQTT recibido:", msgStr);
 
